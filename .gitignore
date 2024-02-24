@@ -14,5 +14,5 @@ data/
 # general test file
 playground.py
 
-# Exceptions
+# exceptions
 !data/prompts.txt
