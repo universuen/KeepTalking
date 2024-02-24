@@ -20,7 +20,7 @@ class OtherConfig:
 
 @dataclass
 class Gemma2bTrainingConfig:
-    epochs: int = 100
+    epochs: int = 10
     lr: float = 1e-2
     num_prompts: int = 10
     max_len_for_full: int = 80

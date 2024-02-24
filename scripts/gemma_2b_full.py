@@ -72,6 +72,6 @@ for e in range(1, training_config.epochs + 1):
         epoch_loss += loss.item()
     logger.info(f"Epoch {e} completed with loss: {epoch_loss/len(prompts)}")
 
-ids = learnable_prompts.to_ids(model_embedding_layer.weight.data)
+ids = learnable_prompts.to_ids(model_embedding_layer)
 tokens = tokenizer.convert_ids_to_tokens(ids)
 logger.info(f"Learned prompts: {' '.join(tokens)}")
