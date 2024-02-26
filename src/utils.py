@@ -3,6 +3,7 @@ from pathlib import Path
 import torch
 
 from src.logger import Logger
+from src.learnable_prompts import LearnablePrompts
 
 
 def read_prompts(file_path: Path):
@@ -16,7 +17,7 @@ def generate_logits_seq(
     input_embeddings: torch.Tensor, 
     max_len: int = 100,
     tokenizer = None,
-    logger = None,
+    logger: Logger = None,
 ):
     model_embedding_layer: torch.nn.Embedding = model.get_input_embeddings()
     all_logits = []
@@ -29,9 +30,9 @@ def generate_logits_seq(
             break
         next_token_embedding = model_embedding_layer(next_token_id)
         input_embeddings = torch.cat([input_embeddings, next_token_embedding], dim=1)
-        if logger is not None:
-            if i % 10 == 0:
-                logger.info(f'Already generated {i} words!')
+        # if logger is not None:
+        #     if i % 10 == 0:
+        #         logger.info(f'Already generated {i} words!')
     all_logits = torch.cat(all_logits)
 
     if tokenizer is not None:
@@ -41,3 +42,20 @@ def generate_logits_seq(
             logger.info(f'Generated sentence: {generated_sentence}')
 
     return all_logits
+
+@torch.no_grad()
+def evaluate(model, learnable_prompts, val_prompts, tokenizer, max_len=200, batch_size=5):
+    lp_ids = learnable_prompts.to_ids(model.get_input_embeddings().weight.data)
+    lp_tokens = tokenizer.convert_ids_to_tokens(lp_ids)
+    lp_text = ' '.join(lp_tokens)
+    generated_lengths = []
+    for i in range(0, len(val_prompts), batch_size):
+        batch_prompts = val_prompts[i:i + batch_size]
+        input_texts = [prompt + lp_text for prompt in batch_prompts]
+        input_ids = tokenizer(input_texts, padding=True, return_tensors="pt").to(model.device)
+        outputs = model.generate(**input_ids, max_new_tokens=max_len)
+        for output in outputs:
+            generated_text = tokenizer.decode(output, skip_special_tokens=True)
+            generated_lengths.append(len(generated_text.split()))
+    average_length = sum(generated_lengths) / len(generated_lengths)
+    return average_length

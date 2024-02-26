@@ -31,8 +31,9 @@ learnable_prompts = LearnablePrompts(
     num_prompts=training_config.num_prompts,
     num_dims=model_embedding_layer.embedding_dim,
 ).to(other_config.device)
-prompts = utils.read_prompts(path_config.data / 'prompts.txt')
-logger.info(f'Loaded {len(prompts)} prompts')
+prompts = utils.read_prompts(path_config.data / 'training_prompts.txt')
+val_prompts = utils.read_prompts(path_config.data / 'validation_prompts.txt')
+logger.info(f'Loaded {len(prompts)} training prompts and {len(val_prompts)} validation prompts')
 eos_token_id = tokenizer.eos_token_id
 prefix = '<start_of_turn>user\n'
 suffix = '<end_of_turn><start_of_turn>model\n'
@@ -46,7 +47,7 @@ logger.info(f'Using Adam')
 for e in range(1, training_config.epochs + 1):
     logger.info(f"Epoch {e} started")
     epoch_loss = 0
-    for prompt in prompts:
+    for i, prompt in enumerate(prompts):
         logger.info(f'Tuning on prompt: {prompt}')
         optimizer.zero_grad()
         prompt = prefix + prompt
@@ -70,6 +71,16 @@ for e in range(1, training_config.epochs + 1):
         loss.backward()
         optimizer.step()
         epoch_loss += loss.item()
+        if (i + 1) % 30 == 0:
+            logger.info('Evaluating')
+            avg_len = utils.evaluate(
+                model = model,
+                learnable_prompts=learnable_prompts,
+                val_prompts=val_prompts,
+                tokenizer=tokenizer,
+            )
+            logger.info(f'Avg response length on val dataset: {avg_len}')
+
     logger.info(f"Epoch {e} completed with loss: {epoch_loss/len(prompts)}")
 
 ids = learnable_prompts.to_ids(model_embedding_layer)
