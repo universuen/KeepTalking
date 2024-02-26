@@ -44,7 +44,7 @@ def generate_logits_seq(
     return all_logits
 
 @torch.no_grad()
-def evaluate(model, learnable_prompts, val_prompts, tokenizer, max_len=200, batch_size=5):
+def evaluate(model, learnable_prompts, val_prompts, tokenizer, max_len=200, batch_size=2):
     lp_ids = learnable_prompts.to_ids(model.get_input_embeddings().weight.data)
     lp_tokens = tokenizer.convert_ids_to_tokens(lp_ids)
     lp_text = ' '.join(lp_tokens)
