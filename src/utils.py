@@ -49,7 +49,7 @@ def evaluate(model, learnable_prompts, val_prompts, tokenizer, max_len=100, logg
     generated_lengths = []
     for i in val_prompts:
         if logger is not None:
-            logger.debug(f'Evaluationg on prompt:{i}')
+            logger.debug(f'Evaluating on prompt:{i}')
         input_ids = construct_input_ids(
             text_prompt=i,
             tokenizer=tokenizer,
