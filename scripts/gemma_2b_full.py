@@ -11,7 +11,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 
 
 training_config = configs.Gemma2bTrainingConfig()
-logger_config = configs.LoggerConfig()
+logger_config = configs.LoggerConfig(level='DEBUG')
 path_config = configs.PathConfig()
 other_config = configs.OtherConfig()
 
@@ -35,32 +35,21 @@ prompts = utils.read_prompts(path_config.data / 'training_prompts.txt')
 val_prompts = utils.read_prompts(path_config.data / 'validation_prompts.txt')
 logger.info(f'Loaded {len(prompts)} training prompts and {len(val_prompts)} validation prompts')
 eos_token_id = tokenizer.eos_token_id
-prefix = '<start_of_turn>user\n'
-suffix = '<end_of_turn><start_of_turn>model\n'
-suffix_embedding = model_embedding_layer(
-        torch.tensor([tokenizer(suffix)['input_ids'][1:]]).to(other_config.device)
-    ).detach()
-
 optimizer = torch.optim.Adam([learnable_prompts.embeddings], lr=training_config.lr)
 logger.info(f'Using Adam')
 
 for e in range(1, training_config.epochs + 1):
     logger.info(f"Epoch {e} started")
     epoch_loss = 0
-    for i, prompt in enumerate(prompts):
-        logger.info(f'Tuning on prompt: {prompt}')
+    for i, text_prompt in enumerate(prompts):
+        logger.info(f'[Epoch {e} | {(i + 1) / len(prompts):.2%}] Tuning on prompt: {text_prompt}')
         optimizer.zero_grad()
-        prompt = prefix + prompt
-        text_ids = tokenizer(prompt, return_tensors="pt")['input_ids']
-        text_embeddings = model_embedding_layer(text_ids).to(other_config.device)
-        input_embeddings= torch.cat(
-                [
-                    text_embeddings, 
-                    learnable_prompts.embeddings.unsqueeze(0),
-                    suffix_embedding
-                ], 
-                dim=1
-            )
+        input_embeddings = utils.construct_input_embeddings(
+            text_prompt=text_prompt,
+            tokenizer=tokenizer,
+            embedding_layer=model_embedding_layer,
+            lp_embeddings=learnable_prompts.embeddings,
+        )
         logits = utils.generate_logits_seq(
                 model=model, eos_token_id=eos_token_id, 
                 input_embeddings=input_embeddings,
@@ -73,11 +62,13 @@ for e in range(1, training_config.epochs + 1):
         epoch_loss += loss.item()
         if (i + 1) % 30 == 0:
             logger.info('Evaluating')
+            torch.cuda.empty_cache()
             avg_len = utils.evaluate(
                 model = model,
                 learnable_prompts=learnable_prompts,
                 val_prompts=val_prompts,
                 tokenizer=tokenizer,
+                logger=logger,
             )
             logger.info(f'Avg response length on val dataset: {avg_len}')
 

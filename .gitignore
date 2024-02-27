@@ -1,18 +1,19 @@
 # IDE configurations
-.vscode/
-.idea/
+/.vscode/
+/.idea/
 
 # cache
 __pycache__/
 
 # virtual environment
-venv/
+/venv/
 
 # space-intensive data
-data/
+/data/
 
 # general test file
 playground.py
 
 # exceptions
-!data/prompts.txt
+!/data/training_prompts.txt
+!/data/training_prompts.txt

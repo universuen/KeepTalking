@@ -1,6 +1,8 @@
+from ast import Return
 from pathlib import Path
 
 import torch
+import transformers
 
 from src.logger import Logger
 from src.learnable_prompts import LearnablePrompts
@@ -30,32 +32,84 @@ def generate_logits_seq(
             break
         next_token_embedding = model_embedding_layer(next_token_id)
         input_embeddings = torch.cat([input_embeddings, next_token_embedding], dim=1)
-        # if logger is not None:
-        #     if i % 10 == 0:
-        #         logger.info(f'Already generated {i} words!')
     all_logits = torch.cat(all_logits)
 
     if tokenizer is not None:
         generated_token_ids = all_logits.argmax(dim=-1)
         generated_sentence = tokenizer.decode(generated_token_ids.tolist(), skip_special_tokens=True)
         if logger is not None:
-            logger.info(f'Generated sentence: {generated_sentence}')
+            logger.debug(f'Corresponding result: {generated_sentence}')
 
     return all_logits
 
+
 @torch.no_grad()
-def evaluate(model, learnable_prompts, val_prompts, tokenizer, max_len=100, batch_size=2):
-    lp_ids = learnable_prompts.to_ids(model.get_input_embeddings().weight.data)
-    lp_tokens = tokenizer.convert_ids_to_tokens(lp_ids)
-    lp_text = ' '.join(lp_tokens)
+def evaluate(model, learnable_prompts, val_prompts, tokenizer, max_len=100, logger=None):
+    lp_ids = learnable_prompts.to_ids(model.get_input_embeddings())
     generated_lengths = []
-    for i in range(0, len(val_prompts), batch_size):
-        batch_prompts = val_prompts[i:i + batch_size]
-        input_texts = [prompt + lp_text for prompt in batch_prompts]
-        input_ids = tokenizer(input_texts, padding=True, return_tensors="pt").to(model.device)
-        outputs = model.generate(**input_ids, max_new_tokens=max_len)
-        for output in outputs:
-            generated_text = tokenizer.decode(output, skip_special_tokens=True)
-            generated_lengths.append(len(generated_text.split()))
+    for i in val_prompts:
+        if logger is not None:
+            logger.debug(f'Evaluationg on prompt:{i}')
+        input_ids = construct_input_ids(
+            text_prompt=i,
+            tokenizer=tokenizer,
+            lp_ids=lp_ids
+        )
+        output = model.generate(input_ids, max_new_tokens=max_len)
+        generated_text = tokenizer.decode(output[0], skip_special_tokens=True)
+        if logger is not None:
+            logger.debug(f'Corresponding result:{i}')
+        generated_lengths.append(len(generated_text.split()))
     average_length = sum(generated_lengths) / len(generated_lengths)
     return average_length
+
+
+def decorate_tokenizer(tokenizer: transformers.PreTrainedTokenizerFast) -> None:
+    if '<lp>' not in tokenizer.added_tokens_encoder.keys():
+        tokenizer.add_tokens('<lp>', special_tokens=True)
+
+
+@torch.no_grad()
+def construct_input_embeddings(
+        text_prompt: str, 
+        tokenizer: transformers.PreTrainedTokenizerFast, 
+        embedding_layer: torch.nn.Embedding,
+        lp_embeddings: torch.Tensor,
+    ) -> torch.Tensor:
+    decorate_tokenizer(tokenizer)
+    lp_id = tokenizer.added_tokens_encoder['<lp>']
+    prompt = f'{text_prompt} <lp>'
+    encoded_ids = tokenizer.apply_chat_template(
+        [{"role": "user", "content": prompt}],
+        add_generation_prompt=True,
+    )
+    cut_off_point = encoded_ids.index(lp_id)
+    prefix_ids = torch.tensor([encoded_ids[:cut_off_point]], dtype=torch.long, device=lp_embeddings.device)
+    suffix_ids = torch.tensor([encoded_ids[cut_off_point + 1:]], dtype=torch.long, device=lp_embeddings.device)
+    prefix_embeddings = embedding_layer(prefix_ids)
+    suffix_embeddings = embedding_layer(suffix_ids)
+    constructed_embeddings = torch.cat(
+        [prefix_embeddings, lp_embeddings.unsqueeze(0), suffix_embeddings],
+        dim=1,
+    )
+    return constructed_embeddings
+
+
+@torch.no_grad()
+def construct_input_ids(
+        text_prompt: str, 
+        tokenizer: transformers.PreTrainedTokenizerFast, 
+        lp_ids: torch.Tensor,
+    ) -> torch.Tensor:
+    decorate_tokenizer(tokenizer)
+    lp_id = tokenizer.added_tokens_encoder['<lp>']
+    prompt = f'{text_prompt} <lp>'
+    encoded_ids = tokenizer.apply_chat_template(
+        [{"role": "user", "content": prompt}],
+        add_generation_prompt=True,
+    )
+    cut_off_point = encoded_ids.index(lp_id)
+    prefix_ids = torch.tensor([encoded_ids[:cut_off_point]], dtype=torch.long, device=lp_ids.device)
+    suffix_ids = torch.tensor([encoded_ids[cut_off_point + 1:]], dtype=torch.long, device=lp_ids.device)
+    constructed_ids = torch.cat([prefix_ids, lp_ids.unsqueeze(0), suffix_ids], dim=1)
+    return constructed_ids

@@ -9,8 +9,12 @@ class LearnablePrompts(nn.Module):
             torch.randn(num_prompts, num_dims)
         )
 
-    def to_ids(self, embedding_pool: torch.Tensor) -> torch.Tensor:
-        cosine_similarities = torch.cosine_similarity(self.embeddings.unsqueeze(1), embedding_pool.unsqueeze(0), dim=-1)
+    def to_ids(self, embedding_layer: torch.nn.Embedding) -> torch.Tensor:
+        cosine_similarities = torch.cosine_similarity(
+            self.embeddings.unsqueeze(1), 
+            embedding_layer.weight.data.unsqueeze(0), 
+            dim=-1
+        )
         ids = torch.argmax(cosine_similarities, dim=-1)
         return ids
 
