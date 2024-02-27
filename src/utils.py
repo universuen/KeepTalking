@@ -58,7 +58,7 @@ def evaluate(model, learnable_prompts, val_prompts, tokenizer, max_len=100, logg
         output = model.generate(input_ids, max_new_tokens=max_len)
         generated_text = tokenizer.decode(output[0], skip_special_tokens=True)
         if logger is not None:
-            logger.debug(f'Corresponding result:{i}')
+            logger.debug(f'Corresponding result:{generated_text}')
         generated_lengths.append(len(generated_text.split()))
     average_length = sum(generated_lengths) / len(generated_lengths)
     return average_length
