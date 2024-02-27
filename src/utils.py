@@ -45,6 +45,40 @@ def generate_logits_seq(
     return all_logits
 
 
+def get_last_logits(
+    model,
+    eos_token_id: int, 
+    input_embeddings: torch.Tensor, 
+    max_len: int = 100,
+    tokenizer = None,
+    logger: Logger = None,
+) -> torch.Tensor:
+    model_embedding_layer: torch.nn.Embedding = model.get_input_embeddings()
+    all_logits = []
+    last_logits = None
+    for i in range(1, max_len + 1):
+        with torch.no_grad():
+            outputs = model(inputs_embeds=input_embeddings)
+        logits = outputs.logits
+        all_logits.append(logits[:, -1, :]) 
+        next_token_id = logits[:, -1, :].argmax(dim=1).unsqueeze(1)
+        if next_token_id == eos_token_id or i == max_len:
+            outputs = model(inputs_embeds=input_embeddings)
+            last_logits = outputs.logits[:, -1, :]
+            break
+        next_token_embedding = model_embedding_layer(next_token_id)
+        input_embeddings = torch.cat([input_embeddings, next_token_embedding], dim=1)
+    all_logits = torch.cat(all_logits)
+
+    if tokenizer is not None:
+        generated_token_ids = all_logits.argmax(dim=-1)
+        generated_sentence = tokenizer.decode(generated_token_ids.tolist(), skip_special_tokens=True)
+        if logger is not None:
+            logger.debug(f'Corresponding result: {generated_sentence}')
+
+    return last_logits
+
+
 @torch.no_grad()
 def evaluate(model, learnable_prompts, val_prompts, tokenizer, max_len=100, logger=None):
     lp_ids = learnable_prompts.to_ids(model.get_input_embeddings())
