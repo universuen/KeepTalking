@@ -2,6 +2,7 @@ import context
 
 from src.learnable_prompts import LearnablePrompts
 from src.logger import Logger
+from src.env import Env
 from src import utils
 import configs
 
@@ -21,7 +22,11 @@ logger.info(logger_config)
 logger.info(path_config)
 logger.info(other_config)
 
+env = Env()
+env.set('lp_token', other_config.gemma_2b_lp_token)
+
 tokenizer: transformers.GemmaTokenizerFast = AutoTokenizer.from_pretrained('google/gemma-2b-it')
+eos_token_id = tokenizer.eos_token_id
 model: transformers.GemmaForCausalLM = AutoModelForCausalLM.from_pretrained(
         'google/gemma-2b-it', 
         device_map="auto"
@@ -31,10 +36,12 @@ learnable_prompts = LearnablePrompts(
     num_prompts=training_config.num_prompts,
     num_dims=model_embedding_layer.embedding_dim,
 ).to(other_config.device)
+
 prompts = utils.read_prompts(path_config.data / 'training_prompts.txt')
 val_prompts = utils.read_prompts(path_config.data / 'validation_prompts.txt')
 logger.info(f'Loaded {len(prompts)} training prompts and {len(val_prompts)} validation prompts')
-eos_token_id = tokenizer.eos_token_id
+
+
 optimizer = torch.optim.Adam([learnable_prompts.embeddings], lr=training_config.lr)
 logger.info(f'Using Adam')
 
@@ -60,7 +67,8 @@ for e in range(1, training_config.epochs + 1):
         loss.backward()
         optimizer.step()
         epoch_loss += loss.item()
-        if (i + 1) % 30 == 0:
+        logger.debug(f'Loss: {loss.item()}')
+        if (i + 1) % 20 == 0:
             logger.info('Evaluating')
             torch.cuda.empty_cache()
             avg_len = utils.evaluate(
@@ -75,5 +83,5 @@ for e in range(1, training_config.epochs + 1):
     logger.info(f"Epoch {e} completed with loss: {epoch_loss/len(prompts)}")
 
 ids = learnable_prompts.to_ids(model_embedding_layer)
-tokens = tokenizer.convert_ids_to_tokens(ids)
-logger.info(f"Learned prompts: {' '.join(tokens)}")
+lp_text = tokenizer.decode(ids)
+logger.info(f"Learned prompts: {lp_text}")

@@ -1,11 +1,13 @@
-from ast import Return
 from pathlib import Path
 
 import torch
 import transformers
 
 from src.logger import Logger
-from src.learnable_prompts import LearnablePrompts
+from src.env import Env
+
+
+env = Env()
 
 
 def read_prompts(file_path: Path):
@@ -65,8 +67,8 @@ def evaluate(model, learnable_prompts, val_prompts, tokenizer, max_len=100, logg
 
 
 def decorate_tokenizer(tokenizer: transformers.PreTrainedTokenizerFast) -> None:
-    if '<lp>' not in tokenizer.added_tokens_encoder.keys():
-        tokenizer.add_tokens('<lp>', special_tokens=True)
+    if env.get('lp_token') not in tokenizer.added_tokens_encoder.keys():
+        tokenizer.add_tokens(env.get('lp_token'), special_tokens=True)
 
 
 @torch.no_grad()
@@ -77,8 +79,8 @@ def construct_input_embeddings(
         lp_embeddings: torch.Tensor,
     ) -> torch.Tensor:
     decorate_tokenizer(tokenizer)
-    lp_id = tokenizer.added_tokens_encoder['<lp>']
-    prompt = f'{text_prompt} <lp>'
+    lp_id = tokenizer.added_tokens_encoder[env.get('lp_token')]
+    prompt = f"{text_prompt} {env.get('lp_token')}"
     encoded_ids = tokenizer.apply_chat_template(
         [{"role": "user", "content": prompt}],
         add_generation_prompt=True,
@@ -102,8 +104,8 @@ def construct_input_ids(
         lp_ids: torch.Tensor,
     ) -> torch.Tensor:
     decorate_tokenizer(tokenizer)
-    lp_id = tokenizer.added_tokens_encoder['<lp>']
-    prompt = f'{text_prompt} <lp>'
+    lp_id = tokenizer.added_tokens_encoder[env.get('lp_token')]
+    prompt = f"{text_prompt} {env.get('lp_token')}"
     encoded_ids = tokenizer.apply_chat_template(
         [{"role": "user", "content": prompt}],
         add_generation_prompt=True,

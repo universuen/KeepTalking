@@ -10,6 +10,7 @@ import logging
 @dataclass
 class OtherConfig:
     device: str = 'auto'
+    gemma_2b_lp_token: str = '<_lp>'
 
     def __post_init__(self) -> None:
         if torch.cuda.is_available():
@@ -20,7 +21,7 @@ class OtherConfig:
 
 @dataclass
 class Gemma2bTrainingConfig:
-    epochs: int = 10
+    epochs: int = 1
     lr: float = 1e-2
     num_prompts: int = 10
     max_len_for_full: int = 80
