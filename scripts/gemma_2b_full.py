@@ -11,7 +11,7 @@ import transformers
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 
-training_config = configs.Gemma2bTrainingConfig()
+training_config = configs.Gemma2bFullTrainingConfig()
 logger_config = configs.LoggerConfig(level='DEBUG')
 path_config = configs.PathConfig()
 other_config = configs.OtherConfig()
