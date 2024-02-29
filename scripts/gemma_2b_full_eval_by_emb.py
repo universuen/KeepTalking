@@ -14,9 +14,9 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 training_config = configs.Gemma2bFullTrainingConfig()
 logger_config = configs.LoggerConfig(level='DEBUG')
 path_config = configs.PathConfig()
-other_config = configs.OtherConfig(device='cuda:0')
+other_config = configs.OtherConfig(device='cuda:2')
 
-logger = Logger('gemma_2b_full', logger_config.level, logger_config.path)
+logger = Logger('gemma_2b_full_eval_by_emb', logger_config.level, logger_config.path)
 logger.info(training_config)
 logger.info(logger_config)
 logger.info(path_config)
@@ -76,7 +76,7 @@ for e in range(1, training_config.epochs + 1):
         if step_cnt % 10 == 0:
             logger.info('Evaluating')
             torch.cuda.empty_cache()
-            avg_len = utils.evaluate(
+            avg_len = utils.evaluate_by_embeddings(
                 model = model,
                 learnable_prompts=learnable_prompts,
                 val_prompts=val_prompts,

@@ -71,9 +71,10 @@ for e in range(1, training_config.epochs + 1):
             sub_loss.backward()
             loss += sub_loss.item()
         optimizer.step()
+        step_cnt += 1
         epoch_loss += loss
         logger.debug(f'Loss: {loss}')
-        if (i + 1) % 10 == 0:
+        if step_cnt % 10 == 0:
             logger.info('Evaluating')
             torch.cuda.empty_cache()
             avg_len = utils.evaluate(

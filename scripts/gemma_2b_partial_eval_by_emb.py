@@ -11,12 +11,12 @@ import transformers
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 
-training_config = configs.Gemma2bFullTrainingConfig()
+training_config = configs.Gemma2bPartialTrainingConfig()
 logger_config = configs.LoggerConfig(level='DEBUG')
 path_config = configs.PathConfig()
-other_config = configs.OtherConfig(device='cuda:0')
+other_config = configs.OtherConfig(device='cuda:3')
 
-logger = Logger('gemma_2b_full', logger_config.level, logger_config.path)
+logger = Logger('gemma_2b_partial_eval_by_emb', logger_config.level, logger_config.path)
 logger.info(training_config)
 logger.info(logger_config)
 logger.info(path_config)
@@ -60,13 +60,13 @@ for e in range(1, training_config.epochs + 1):
                 embedding_layer=model_embedding_layer,
                 lp_embeddings=learnable_prompts.embeddings,
             )
-            logits = utils.generate_logits_seq(
-                model=model, eos_token_id=eos_token_id, 
-                input_embeddings=input_embeddings,
-                max_len=training_config.max_len, 
-                tokenizer=tokenizer, logger=logger,
-            )
-            sub_loss = torch.mean(torch.softmax(logits, dim=1)[:, eos_token_id]) / training_config.batch_size
+            logits = utils.get_last_logits(
+                    model=model, eos_token_id=eos_token_id, 
+                    input_embeddings=input_embeddings,
+                    max_len=training_config.max_len, 
+                    tokenizer=tokenizer, logger=logger,
+                )
+            sub_loss = torch.softmax(logits, dim=1)[:, eos_token_id] / training_config.batch_size
             sub_loss.backward()
             loss += sub_loss.item()
         optimizer.step()
@@ -76,7 +76,7 @@ for e in range(1, training_config.epochs + 1):
         if step_cnt % 10 == 0:
             logger.info('Evaluating')
             torch.cuda.empty_cache()
-            avg_len = utils.evaluate(
+            avg_len = utils.evaluate_by_embeddings(
                 model = model,
                 learnable_prompts=learnable_prompts,
                 val_prompts=val_prompts,

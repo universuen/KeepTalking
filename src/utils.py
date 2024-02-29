@@ -25,7 +25,7 @@ def generate_logits_seq(
 ):
     model_embedding_layer: torch.nn.Embedding = model.get_input_embeddings()
     all_logits = []
-    for i in range(1, max_len + 1):
+    for _ in range(1, max_len + 1):
         outputs = model(inputs_embeds=input_embeddings)
         logits = outputs.logits
         all_logits.append(logits[:, -1, :]) 
@@ -43,6 +43,33 @@ def generate_logits_seq(
             logger.debug(f'Corresponding result: {generated_sentence}')
 
     return all_logits
+
+
+@torch.no_grad()
+def evaluate_by_embeddings(model, learnable_prompts, val_prompts, tokenizer, max_len=200, logger=None):
+    generated_lengths = []
+    for i in val_prompts:
+        if logger is not None:
+            logger.debug(f'Evaluating on prompt:{i}')
+        input_embeddings = construct_input_embeddings(
+            text_prompt=i, 
+            tokenizer=tokenizer, 
+            embedding_layer=model.get_input_embeddings(),
+            lp_embeddings=learnable_prompts.embeddings,
+        )
+        logits = generate_logits_seq(
+            model,
+            eos_token_id=tokenizer.eos_token_id, 
+            input_embeddings=input_embeddings, 
+            max_len=max_len,
+        )
+        generated_token_ids = logits.argmax(dim=-1)
+        generated_text = tokenizer.decode(generated_token_ids.tolist(), skip_special_tokens=True)
+        if logger is not None:
+            logger.debug(f'Corresponding result:{generated_text}')
+        generated_lengths.append(len(generated_text.split()))
+    average_length = sum(generated_lengths) / len(generated_lengths)
+    return average_length
 
 
 def get_last_logits(
@@ -80,7 +107,7 @@ def get_last_logits(
 
 
 @torch.no_grad()
-def evaluate(model, learnable_prompts, val_prompts, tokenizer, max_len=100, logger=None):
+def evaluate(model, learnable_prompts, val_prompts, tokenizer, max_len=200, logger=None):
     lp_ids = learnable_prompts.to_ids(model.get_input_embeddings())
     generated_lengths = []
     for i in val_prompts:
