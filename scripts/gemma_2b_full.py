@@ -14,7 +14,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 training_config = configs.Gemma2bFullTrainingConfig()
 logger_config = configs.LoggerConfig(level='DEBUG')
 path_config = configs.PathConfig()
-other_config = configs.OtherConfig()
+other_config = configs.OtherConfig(device='cuda:0')
 
 logger = Logger('gemma_2b_full', logger_config.level, logger_config.path)
 logger.info(training_config)
@@ -29,7 +29,7 @@ tokenizer: transformers.GemmaTokenizerFast = AutoTokenizer.from_pretrained('goog
 eos_token_id = tokenizer.eos_token_id
 model: transformers.GemmaForCausalLM = AutoModelForCausalLM.from_pretrained(
         'google/gemma-2b-it', 
-        device_map="cuda"
+        device_map=other_config.device,
     )
 model_embedding_layer: torch.nn.Embedding = model.get_input_embeddings()
 learnable_prompts = LearnablePrompts(
