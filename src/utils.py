@@ -46,7 +46,7 @@ def generate_logits_seq(
 
 
 @torch.no_grad()
-def evaluate_by_embeddings(model, learnable_prompts, val_prompts, tokenizer, max_len=200, logger=None):
+def evaluate_by_embeddings(model, learnable_prompts, val_prompts, tokenizer, max_len=100, logger=None):
     generated_lengths = []
     for i in val_prompts:
         if logger is not None:
@@ -107,7 +107,7 @@ def get_last_logits(
 
 
 @torch.no_grad()
-def evaluate(model, learnable_prompts, val_prompts, tokenizer, max_len=200, logger=None):
+def evaluate(model, learnable_prompts, val_prompts, tokenizer, max_len=100, logger=None):
     lp_ids = learnable_prompts.to_ids(model.get_input_embeddings())
     generated_lengths = []
     for i in val_prompts:
