@@ -23,15 +23,18 @@ class OtherConfig:
 class Gemma2bFullTrainingConfig:
     epochs: int = 1
     lr: float = 1e-2
-    num_prompts: int = 10
-    max_len_for_full: int = 80
+    num_prompts: int = 50
+    max_len: int = 50
+    batch_size: int = 10
 
 
+@dataclass
 class Gemma2bPartialTrainingConfig:
     epochs: int = 1
     lr: float = 1e-2
-    num_prompts: int = 10
-    max_len_for_full: int = 80
+    num_prompts: int = 100
+    max_len: int = 100
+    batch_size: int = 10
 
 
 @dataclass

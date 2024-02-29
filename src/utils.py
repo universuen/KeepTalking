@@ -105,7 +105,6 @@ def decorate_tokenizer(tokenizer: transformers.PreTrainedTokenizerFast) -> None:
         tokenizer.add_tokens(env.get('lp_token'), special_tokens=True)
 
 
-@torch.no_grad()
 def construct_input_embeddings(
         text_prompt: str, 
         tokenizer: transformers.PreTrainedTokenizerFast, 

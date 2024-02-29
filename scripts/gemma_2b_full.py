@@ -29,7 +29,7 @@ tokenizer: transformers.GemmaTokenizerFast = AutoTokenizer.from_pretrained('goog
 eos_token_id = tokenizer.eos_token_id
 model: transformers.GemmaForCausalLM = AutoModelForCausalLM.from_pretrained(
         'google/gemma-2b-it', 
-        device_map="auto"
+        device_map="cuda"
     )
 model_embedding_layer: torch.nn.Embedding = model.get_input_embeddings()
 learnable_prompts = LearnablePrompts(
@@ -48,27 +48,31 @@ logger.info(f'Using Adam')
 for e in range(1, training_config.epochs + 1):
     logger.info(f"Epoch {e} started")
     epoch_loss = 0
-    for i, text_prompt in enumerate(prompts):
-        logger.info(f'[Epoch {e} | {(i + 1) / len(prompts):.2%}] Tuning on prompt: {text_prompt}')
+    step_cnt = 0
+    for i in range(0, len(prompts), training_config.batch_size):
+        loss = 0
         optimizer.zero_grad()
-        input_embeddings = utils.construct_input_embeddings(
-            text_prompt=text_prompt,
-            tokenizer=tokenizer,
-            embedding_layer=model_embedding_layer,
-            lp_embeddings=learnable_prompts.embeddings,
-        )
-        logits = utils.generate_logits_seq(
+        for text_prompt in prompts[i:i + training_config.batch_size]:
+            logger.info(f'[Epoch {e}] Tuning on prompt: {text_prompt}')
+            input_embeddings = utils.construct_input_embeddings(
+                text_prompt=text_prompt,
+                tokenizer=tokenizer,
+                embedding_layer=model_embedding_layer,
+                lp_embeddings=learnable_prompts.embeddings,
+            )
+            logits = utils.generate_logits_seq(
                 model=model, eos_token_id=eos_token_id, 
                 input_embeddings=input_embeddings,
-                max_len=training_config.max_len_for_full, 
+                max_len=training_config.max_len, 
                 tokenizer=tokenizer, logger=logger,
             )
-        loss = torch.mean(torch.softmax(logits, dim=1)[:, eos_token_id])
-        loss.backward()
+            sub_loss = torch.mean(torch.softmax(logits, dim=1)[:, eos_token_id]) / training_config.batch_size
+            sub_loss.backward()
+            loss += sub_loss.item()
         optimizer.step()
-        epoch_loss += loss.item()
-        logger.debug(f'Loss: {loss.item()}')
-        if (i + 1) % 20 == 0:
+        epoch_loss += loss
+        logger.debug(f'Loss: {loss}')
+        if (i + 1) % 10 == 0:
             logger.info('Evaluating')
             torch.cuda.empty_cache()
             avg_len = utils.evaluate(
@@ -80,7 +84,7 @@ for e in range(1, training_config.epochs + 1):
             )
             logger.info(f'Avg response length on val dataset: {avg_len}')
 
-    logger.info(f"Epoch {e} completed with loss: {epoch_loss/len(prompts)}")
+    logger.info(f"Epoch {e} completed with loss: {epoch_loss / len(prompts)}")
 
 ids = learnable_prompts.to_ids(model_embedding_layer)
 lp_text = tokenizer.decode(ids)
