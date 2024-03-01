@@ -9,10 +9,10 @@ class LearnablePrompts(nn.Module):
             torch.randn(num_prompts, num_dims)
         )
 
-    def to_ids(self, embedding_layer: torch.nn.Embedding, batch_size: int = 10) -> torch.Tensor:
+    def to_ids(self, embedding_layer: torch.nn.Embedding, chunk_size: int = 10) -> torch.Tensor:
         all_ids = []
-        for i in range(0, self.embeddings.size(0), batch_size):
-            batch_embeddings = self.embeddings[i:i + batch_size]
+        for i in range(0, self.embeddings.size(0), chunk_size):
+            batch_embeddings = self.embeddings[i:i + chunk_size]
             cosine_sims = torch.cosine_similarity(
                 batch_embeddings.unsqueeze(1), 
                 embedding_layer.weight.data.unsqueeze(0), 
