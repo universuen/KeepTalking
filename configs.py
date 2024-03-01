@@ -22,7 +22,7 @@ class OtherConfig:
 
 @dataclass
 class Gemma2bFullTrainingConfig:
-    epochs: int = 10
+    epochs: int = 1
     lr: float = 1e-2
     num_prompts: int = 50
     max_len: int = 50
@@ -31,7 +31,7 @@ class Gemma2bFullTrainingConfig:
 
 @dataclass
 class Gemma2bPartialTrainingConfig:
-    epochs: int = 10
+    epochs: int = 1
     lr: float = 1e-2
     num_prompts: int = 100
     max_len: int = 100
