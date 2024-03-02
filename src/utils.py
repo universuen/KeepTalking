@@ -45,6 +45,67 @@ def generate_logits_seq(
     return all_logits
 
 
+def generate_logits_seq_blip2(
+    model,
+    eos_token_id: int, 
+    image: torch.Tensor,
+    input_ids: torch.Tensor,
+    max_len: int = 100,
+    tokenizer = None,
+    logger: Logger = None,
+):
+    all_logits = []
+    for _ in range(1, max_len + 1):
+        outputs = model(pixel_values=image, input_ids=input_ids)
+        logits = outputs.logits
+        all_logits.append(logits[:, -1, :]) 
+        next_token_id = logits[:, -1, :].argmax(dim=1).unsqueeze(1)
+        if next_token_id == eos_token_id:
+            break
+        input_ids = torch.cat([input_ids, next_token_id], dim=1)
+    all_logits = torch.cat(all_logits)
+
+    if tokenizer is not None:
+        generated_token_ids = all_logits.argmax(dim=-1)
+        generated_sentence = tokenizer.decode(generated_token_ids.tolist(), skip_special_tokens=True)
+        if logger is not None:
+            logger.debug(f'Corresponding result: {generated_sentence}')
+
+    return all_logits
+
+
+def generate_last_logits_blip2(
+    model,
+    eos_token_id: int, 
+    image: torch.Tensor,
+    input_ids: torch.Tensor,
+    max_len: int = 100,
+    tokenizer = None,
+    logger: Logger = None,
+):
+    all_logits = []
+    for i in range(1, max_len + 1):
+        with torch.no_grad():
+            outputs = model(pixel_values=image, input_ids=input_ids)
+        logits = outputs.logits
+        all_logits.append(logits[:, -1, :]) 
+        next_token_id = logits[:, -1, :].argmax(dim=1).unsqueeze(1)
+        if next_token_id == eos_token_id or i == max_len:
+            outputs = model(pixel_values=image, input_ids=input_ids)
+            last_logits = outputs.logits[:, -1, :]
+            break
+        input_ids = torch.cat([input_ids, next_token_id], dim=1)
+    all_logits = torch.cat(all_logits)
+
+    if tokenizer is not None:
+        generated_token_ids = all_logits.argmax(dim=-1)
+        generated_sentence = tokenizer.decode(generated_token_ids.tolist(), skip_special_tokens=True)
+        if logger is not None:
+            logger.debug(f'Corresponding result: {generated_sentence}')
+
+    return last_logits
+
+
 @torch.no_grad()
 def evaluate_by_embeddings(model, learnable_prompts, val_prompts, tokenizer, max_len=100, logger=None):
     generated_lengths = []
@@ -129,9 +190,35 @@ def evaluate(model, learnable_prompts, val_prompts, tokenizer, max_len=100, logg
     return average_length
 
 
+@torch.no_grad()
+def evaluate_blip2(model, learnable_visual_prompts, val_prompts, tokenizer, max_len=100, logger=None):
+    generated_lengths = []
+    for i in val_prompts:
+        if logger is not None:
+            logger.debug(f'Evaluating on prompt:{i}')
+        input_ids = tokenizer.encode(f'Question:{i} Answer:', return_tensors='pt').to(model.device)
+        output = model.generate(pixel_values=learnable_visual_prompts.embeddings, input_ids=input_ids, max_new_tokens=max_len)
+        generated_text = tokenizer.decode(output[0])
+        if logger is not None:
+            logger.debug(f'Corresponding result:{generated_text}')
+        generated_lengths.append(len(generated_text.split()))
+        logger.debug(f'Length: {len(generated_text.split())}')
+    average_length = sum(generated_lengths) / len(generated_lengths)
+    return average_length
+
+
 def decorate_tokenizer(tokenizer: transformers.PreTrainedTokenizerFast) -> None:
     if env.get('lp_token') not in tokenizer.added_tokens_encoder.keys():
         tokenizer.add_tokens(env.get('lp_token'), special_tokens=True)
+
+
+def construct_input_ids_blip2(
+    text_prompt: str, 
+    tokenizer,
+) -> torch.Tensor:
+    prompt = f'Question: {text_prompt} Answer:'
+    encoded_ids = tokenizer.encode(prompt, return_tensors="pt")
+    return encoded_ids
 
 
 def construct_input_embeddings(
