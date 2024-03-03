@@ -42,6 +42,14 @@ class Blip2PartialTrainingConfig:
 
 
 @dataclass
+class BlipFullTrainingConfig:
+    epochs: int = 1
+    lr: float = 1e-2
+    max_len: int = 20
+    batch_size: int = 10
+
+
+@dataclass
 class PathConfig:
     project: Path = Path(__file__).absolute().parent
     src: Path = project / 'src'

@@ -107,6 +107,37 @@ def generate_logits_seq_blip2(
     return all_logits
 
 
+def generate_logits_seq_blip(
+    model,
+    image: torch.Tensor,
+    input_ids: torch.Tensor,
+    max_len: int = 100,
+    tokenizer = None,
+    logger: Logger = None,
+):
+    generate_with_grad = enable_grad(model.generate)
+    lang_model_generate_with_grad = enable_grad(model.text_decoder.generate)
+    original_text_decoder_generate = model.text_decoder.generate
+    model.text_decoder.generate = partial(lang_model_generate_with_grad, model.text_decoder)
+    outputs = generate_with_grad(
+        model, 
+        pixel_values=image,
+        input_ids=input_ids, 
+        max_new_tokens=max_len, 
+        return_dict_in_generate=True, 
+        output_logits=True,
+    )
+    model.text_decoder.generate = original_text_decoder_generate
+    all_logits = torch.cat(outputs.logits)
+    if tokenizer is not None:
+        generated_token_ids = all_logits.argmax(dim=-1)
+        generated_sentence = tokenizer.decode(generated_token_ids.tolist(), skip_special_tokens=True)
+        if logger is not None:
+            logger.debug(f'Corresponding result: {generated_sentence}')
+
+    return all_logits
+
+
 def generate_last_logits_blip2(
     model,
     eos_token_id: int, 
@@ -202,13 +233,18 @@ def evaluate_blip2(model, learnable_visual_prompts, val_prompts, tokenizer, max_
             logger.debug(f'Evaluating on prompt:{i}')
         input_ids = tokenizer.encode(f'Question:{i} Answer:', return_tensors='pt').to(model.device)
         output = model.generate(pixel_values=learnable_visual_prompts.embeddings, input_ids=input_ids, max_new_tokens=max_len)
-        generated_text = tokenizer.decode(output[0])
+        generated_text = tokenizer.decode(output[0], skip_special_tokens=True)
         if logger is not None:
             logger.debug(f'Corresponding result:{generated_text}')
         generated_lengths.append(len(generated_text.split()))
         logger.debug(f'Length: {len(generated_text.split())}')
     average_length = sum(generated_lengths) / len(generated_lengths)
     return average_length
+
+
+@torch.no_grad()
+def evaluate_blip(model, learnable_visual_prompts, val_prompts, tokenizer, max_len=100, logger=None):
+    return evaluate_blip2(model, learnable_visual_prompts, val_prompts, tokenizer, max_len, logger)
 
 
 def decorate_tokenizer(tokenizer: transformers.PreTrainedTokenizerFast) -> None:
@@ -222,6 +258,14 @@ def construct_input_ids_blip2(
 ) -> torch.Tensor:
     prompt = f'Question: {text_prompt} Answer:'
     encoded_ids = tokenizer.encode(prompt, return_tensors="pt")
+    return encoded_ids
+
+
+def construct_input_ids_blip(
+    text_prompt: str, 
+    tokenizer,
+) -> torch.Tensor:
+    encoded_ids = tokenizer.encode(text_prompt, return_tensors="pt")
     return encoded_ids
 
 
