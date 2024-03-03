@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Callable
 
 import torch
 import transformers
@@ -17,32 +18,27 @@ def read_prompts(file_path: Path):
 
 def generate_logits_seq(
     model,
-    eos_token_id: int, 
     input_embeddings: torch.Tensor, 
     max_len: int = 100,
     tokenizer = None,
     logger: Logger = None,
 ):
-    model_embedding_layer: torch.nn.Embedding = model.get_input_embeddings()
-    all_logits = []
-    for _ in range(1, max_len + 1):
-        outputs = model(inputs_embeds=input_embeddings)
-        logits = outputs.logits
-        all_logits.append(logits[:, -1, :]) 
-        next_token_id = logits[:, -1, :].argmax(dim=1).unsqueeze(1)
-        if next_token_id == eos_token_id:
-            break
-        next_token_embedding = model_embedding_layer(next_token_id)
-        input_embeddings = torch.cat([input_embeddings, next_token_embedding], dim=1)
-    all_logits = torch.cat(all_logits)
-
+    generate_with_grad = enable_grad(model.generate)
+    outputs = generate_with_grad(
+        model, 
+        inputs_embeds=input_embeddings, 
+        max_new_tokens=max_len, 
+        return_dict_in_generate=True, 
+        output_logits=True,
+    )
+    all_logits = torch.cat(outputs.logits)
     if tokenizer is not None:
         generated_token_ids = all_logits.argmax(dim=-1)
         generated_sentence = tokenizer.decode(generated_token_ids.tolist(), skip_special_tokens=True)
         if logger is not None:
             logger.debug(f'Corresponding result: {generated_sentence}')
 
-    return all_logits
+    return logits
 
 
 def generate_logits_seq_blip2(
@@ -143,22 +139,22 @@ def get_last_logits(
     logger: Logger = None,
 ) -> torch.Tensor:
     model_embedding_layer: torch.nn.Embedding = model.get_input_embeddings()
-    all_logits = []
-    last_logits = None
-    for i in range(1, max_len + 1):
-        with torch.no_grad():
-            outputs = model(inputs_embeds=input_embeddings)
-        logits = outputs.logits
-        all_logits.append(logits[:, -1, :]) 
-        next_token_id = logits[:, -1, :].argmax(dim=1).unsqueeze(1)
-        if next_token_id == eos_token_id or i == max_len:
-            outputs = model(inputs_embeds=input_embeddings)
-            last_logits = outputs.logits[:, -1, :]
-            break
-        next_token_embedding = model_embedding_layer(next_token_id)
-        input_embeddings = torch.cat([input_embeddings, next_token_embedding], dim=1)
-    all_logits = torch.cat(all_logits)
-
+    outputs = model.generate(
+        inputs_embeds=input_embeddings, 
+        max_new_tokens=max_len, 
+        return_dict_in_generate=True,
+        output_logits=True,
+    )
+    all_logits = torch.cat(outputs.logits)
+    input_ids = outputs.sequences
+    try:
+        eos_index = input_ids[0].tolist().index(eos_token_id)
+    except ValueError:
+        eos_index = -1
+    target_input_ids = input_ids[:, :eos_index]
+    response_embs = model_embedding_layer(target_input_ids)
+    inputs_embs = torch.cat([input_embeddings, response_embs], dim=1)
+    last_logits = model(inputs_embeds=inputs_embs).logits[:, -1, :]
     if tokenizer is not None:
         generated_token_ids = all_logits.argmax(dim=-1)
         generated_sentence = tokenizer.decode(generated_token_ids.tolist(), skip_special_tokens=True)
@@ -264,3 +260,7 @@ def construct_input_ids(
     suffix_ids = torch.tensor([encoded_ids[cut_off_point + 1:]], dtype=torch.long, device=lp_ids.device)
     constructed_ids = torch.cat([prefix_ids, lp_ids.unsqueeze(0), suffix_ids], dim=1)
     return constructed_ids
+
+
+def enable_grad(func: Callable) -> Callable:
+    return func.__closure__[1].cell_contents

@@ -61,7 +61,7 @@ for e in range(1, training_config.epochs + 1):
                 lp_embeddings=learnable_prompts.embeddings,
             )
             logits = utils.generate_logits_seq(
-                model=model, eos_token_id=eos_token_id, 
+                model=model,
                 input_embeddings=input_embeddings,
                 max_len=training_config.max_len, 
                 tokenizer=tokenizer, logger=logger,
