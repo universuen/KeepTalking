@@ -23,7 +23,7 @@ logger.info(other_config)
 processor = Blip2Processor.from_pretrained("Salesforce/blip2-opt-2.7b")
 model = Blip2ForConditionalGeneration.from_pretrained("Salesforce/blip2-opt-2.7b", device_map=other_config.device)
 tokenizer = processor.tokenizer
-eos_token_id = tokenizer.eos_token_id
+eos_token_id = model.language_model.generation_config.eos_token_id
 
 model_embedding_layer: torch.nn.Embedding = model.get_input_embeddings()
 learnable_prompts = LearnableVisualPrompts(

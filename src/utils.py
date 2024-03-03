@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Callable
+from functools import partial
 
 import torch
 import transformers
@@ -38,29 +39,31 @@ def generate_logits_seq(
         if logger is not None:
             logger.debug(f'Corresponding result: {generated_sentence}')
 
-    return logits
+    return all_logits
 
 
 def generate_logits_seq_blip2(
     model,
-    eos_token_id: int, 
     image: torch.Tensor,
     input_ids: torch.Tensor,
     max_len: int = 100,
     tokenizer = None,
     logger: Logger = None,
 ):
-    all_logits = []
-    for _ in range(1, max_len + 1):
-        outputs = model(pixel_values=image, input_ids=input_ids)
-        logits = outputs.logits
-        all_logits.append(logits[:, -1, :]) 
-        next_token_id = logits[:, -1, :].argmax(dim=1).unsqueeze(1)
-        if next_token_id == eos_token_id:
-            break
-        input_ids = torch.cat([input_ids, next_token_id], dim=1)
-    all_logits = torch.cat(all_logits)
-
+    generate_with_grad = enable_grad(model.generate)
+    lang_model_generate_with_grad = enable_grad(model.language_model.generate)
+    original_language_model_generate = model.language_model.generate
+    model.language_model.generate = partial(lang_model_generate_with_grad, model.language_model)
+    outputs = generate_with_grad(
+        model, 
+        pixel_values=image,
+        input_ids=input_ids, 
+        max_new_tokens=max_len, 
+        return_dict_in_generate=True, 
+        output_logits=True,
+    )
+    model.language_model.generate = original_language_model_generate
+    all_logits = torch.cat(outputs.logits)
     if tokenizer is not None:
         generated_token_ids = all_logits.argmax(dim=-1)
         generated_sentence = tokenizer.decode(generated_token_ids.tolist(), skip_special_tokens=True)
@@ -79,20 +82,25 @@ def generate_last_logits_blip2(
     tokenizer = None,
     logger: Logger = None,
 ):
-    all_logits = []
-    for i in range(1, max_len + 1):
-        with torch.no_grad():
-            outputs = model(pixel_values=image, input_ids=input_ids)
-        logits = outputs.logits
-        all_logits.append(logits[:, -1, :]) 
-        next_token_id = logits[:, -1, :].argmax(dim=1).unsqueeze(1)
-        if next_token_id == eos_token_id or i == max_len:
-            outputs = model(pixel_values=image, input_ids=input_ids)
-            last_logits = outputs.logits[:, -1, :]
-            break
-        input_ids = torch.cat([input_ids, next_token_id], dim=1)
-    all_logits = torch.cat(all_logits)
-
+    model_embedding_layer: torch.nn.Embedding = model.get_input_embeddings()
+    outputs = model.generate(
+        pixel_values=image,
+        input_ids=input_ids, 
+        max_new_tokens=max_len, 
+        return_dict_in_generate=True,
+        output_logits=True,
+    )
+    all_logits = torch.cat(outputs.logits)
+    input_ids = outputs.sequences
+    try:
+        eos_index = input_ids[0].tolist().index(eos_token_id)
+    except ValueError:
+        eos_index = -1
+    target_input_ids = input_ids[:, :eos_index]
+    response_embs = model_embedding_layer(target_input_ids)
+    input_embeddings = model_embedding_layer(input_ids)
+    inputs_embs = torch.cat([input_embeddings, response_embs], dim=1)
+    last_logits = model.language_model(inputs_embeds=inputs_embs).logits[:, -1, :]
     if tokenizer is not None:
         generated_token_ids = all_logits.argmax(dim=-1)
         generated_sentence = tokenizer.decode(generated_token_ids.tolist(), skip_special_tokens=True)

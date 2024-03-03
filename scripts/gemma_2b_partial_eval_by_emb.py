@@ -26,11 +26,11 @@ env = Env()
 env.set('lp_token', other_config.gemma_2b_lp_token)
 
 tokenizer: transformers.GemmaTokenizerFast = AutoTokenizer.from_pretrained('google/gemma-2b-it')
-eos_token_id = tokenizer.eos_token_id
 model: transformers.GemmaForCausalLM = AutoModelForCausalLM.from_pretrained(
         'google/gemma-2b-it', 
         device_map=other_config.device,
     )
+eos_token_id = model.generation_config.eos_token_id
 model_embedding_layer: torch.nn.Embedding = model.get_input_embeddings()
 learnable_prompts = LearnablePrompts(
     num_prompts=training_config.num_prompts,

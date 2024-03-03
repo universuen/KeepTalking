@@ -23,7 +23,7 @@ logger.info(other_config)
 processor = Blip2Processor.from_pretrained("Salesforce/blip2-opt-2.7b")
 model = Blip2ForConditionalGeneration.from_pretrained("Salesforce/blip2-opt-2.7b", device_map=other_config.device)
 tokenizer = processor.tokenizer
-eos_token_id = tokenizer.eos_token_id
+eos_token_id = model.language_model.generation_config.eos_token_id
 
 model_embedding_layer: torch.nn.Embedding = model.get_input_embeddings()
 learnable_prompts = LearnableVisualPrompts(
@@ -52,7 +52,6 @@ for e in range(1, training_config.epochs + 1):
             input_ids = utils.construct_input_ids_blip2(text_prompt, tokenizer).to(model.device)
             logits = utils.generate_logits_seq_blip2(
                 model=model,
-                eos_token_id=eos_token_id,
                 image=learnable_prompts.embeddings,
                 input_ids=input_ids,
                 max_len=training_config.max_len,
