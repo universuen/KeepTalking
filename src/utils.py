@@ -124,7 +124,6 @@ def evaluate_by_embeddings(model, learnable_prompts, val_prompts, tokenizer, max
         )
         logits = generate_logits_seq(
             model,
-            eos_token_id=tokenizer.eos_token_id, 
             input_embeddings=input_embeddings, 
             max_len=max_len,
         )
