@@ -42,6 +42,40 @@ def generate_logits_seq(
     return all_logits
 
 
+def get_last_logits(
+    model,
+    eos_token_id: int, 
+    input_embeddings: torch.Tensor, 
+    max_len: int = 100,
+    tokenizer = None,
+    logger: Logger = None,
+) -> torch.Tensor:
+    model_embedding_layer: torch.nn.Embedding = model.get_input_embeddings()
+    outputs = model.generate(
+        inputs_embeds=input_embeddings, 
+        max_new_tokens=max_len, 
+        return_dict_in_generate=True,
+        output_logits=True,
+    )
+    all_logits = torch.cat(outputs.logits)
+    input_ids = outputs.sequences
+    try:
+        eos_index = input_ids[0].tolist().index(eos_token_id)
+    except ValueError:
+        eos_index = -1
+    target_input_ids = input_ids[:, :eos_index]
+    response_embs = model_embedding_layer(target_input_ids)
+    inputs_embs = torch.cat([input_embeddings, response_embs], dim=1)
+    last_logits = model(inputs_embeds=inputs_embs).logits[:, -1, :]
+    if tokenizer is not None:
+        generated_token_ids = all_logits.argmax(dim=-1)
+        generated_sentence = tokenizer.decode(generated_token_ids.tolist(), skip_special_tokens=True)
+        if logger is not None:
+            logger.debug(f'Corresponding result: {generated_sentence}')
+
+    return last_logits
+
+
 def generate_logits_seq_blip2(
     model,
     image: torch.Tensor,
@@ -82,7 +116,6 @@ def generate_last_logits_blip2(
     tokenizer = None,
     logger: Logger = None,
 ):
-    model_embedding_layer: torch.nn.Embedding = model.get_input_embeddings()
     outputs = model.generate(
         pixel_values=image,
         input_ids=input_ids, 
@@ -97,10 +130,12 @@ def generate_last_logits_blip2(
     except ValueError:
         eos_index = -1
     target_input_ids = input_ids[:, :eos_index]
-    response_embs = model_embedding_layer(target_input_ids)
-    input_embeddings = model_embedding_layer(input_ids)
-    inputs_embs = torch.cat([input_embeddings, response_embs], dim=1)
-    last_logits = model.language_model(inputs_embeds=inputs_embs).logits[:, -1, :]
+    last_logits = generate_logits_seq_blip2(
+        model,
+        image=image,
+        input_ids=target_input_ids,
+        max_len=max_len,
+    )[-1].unsqueeze(0)
     if tokenizer is not None:
         generated_token_ids = all_logits.argmax(dim=-1)
         generated_sentence = tokenizer.decode(generated_token_ids.tolist(), skip_special_tokens=True)
@@ -135,40 +170,6 @@ def evaluate_by_embeddings(model, learnable_prompts, val_prompts, tokenizer, max
         logger.debug(f'Length: {len(generated_text.split())}')
     average_length = sum(generated_lengths) / len(generated_lengths)
     return average_length
-
-
-def get_last_logits(
-    model,
-    eos_token_id: int, 
-    input_embeddings: torch.Tensor, 
-    max_len: int = 100,
-    tokenizer = None,
-    logger: Logger = None,
-) -> torch.Tensor:
-    model_embedding_layer: torch.nn.Embedding = model.get_input_embeddings()
-    outputs = model.generate(
-        inputs_embeds=input_embeddings, 
-        max_new_tokens=max_len, 
-        return_dict_in_generate=True,
-        output_logits=True,
-    )
-    all_logits = torch.cat(outputs.logits)
-    input_ids = outputs.sequences
-    try:
-        eos_index = input_ids[0].tolist().index(eos_token_id)
-    except ValueError:
-        eos_index = -1
-    target_input_ids = input_ids[:, :eos_index]
-    response_embs = model_embedding_layer(target_input_ids)
-    inputs_embs = torch.cat([input_embeddings, response_embs], dim=1)
-    last_logits = model(inputs_embeds=inputs_embs).logits[:, -1, :]
-    if tokenizer is not None:
-        generated_token_ids = all_logits.argmax(dim=-1)
-        generated_sentence = tokenizer.decode(generated_token_ids.tolist(), skip_special_tokens=True)
-        if logger is not None:
-            logger.debug(f'Corresponding result: {generated_sentence}')
-
-    return last_logits
 
 
 @torch.no_grad()
