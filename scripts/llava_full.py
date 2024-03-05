@@ -24,7 +24,7 @@ processor = AutoProcessor.from_pretrained("llava-hf/llava-1.5-7b-hf")
 model = LlavaForConditionalGeneration.from_pretrained("llava-hf/llava-1.5-7b-hf", device_map=other_config.device, low_cpu_mem_usage=True)
 
 tokenizer = processor.tokenizer
-eos_token_id = model.config.text_config.sep_token_id
+eos_token_id = model.generation_config.eos_token_id
 
 model_embedding_layer: torch.nn.Embedding = model.get_input_embeddings()
 learnable_prompts = LearnableVisualPrompts(
