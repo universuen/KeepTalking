@@ -176,6 +176,34 @@ def generate_last_logits_blip2(
     return last_logits
 
 
+
+def generate_logits_seq_llava(
+    model,
+    image: torch.Tensor,
+    input_ids: torch.Tensor,
+    max_len: int = 100,
+    tokenizer = None,
+    logger: Logger = None,
+):
+    generate_with_grad = enable_grad(model.generate)
+    outputs = generate_with_grad(
+        model, 
+        pixel_values=image,
+        input_ids=input_ids, 
+        max_new_tokens=max_len, 
+        return_dict_in_generate=True, 
+        output_logits=True,
+    )
+    all_logits = torch.cat(outputs.logits)
+    if tokenizer is not None:
+        generated_token_ids = all_logits.argmax(dim=-1)
+        generated_sentence = tokenizer.decode(generated_token_ids.tolist(), skip_special_tokens=True)
+        if logger is not None:
+            logger.debug(f'Corresponding result: {generated_sentence}')
+
+    return all_logits
+
+
 @torch.no_grad()
 def evaluate_by_embeddings(model, learnable_prompts, val_prompts, tokenizer, max_len=100, logger=None):
     generated_lengths = []
@@ -247,6 +275,24 @@ def evaluate_blip(model, learnable_visual_prompts, val_prompts, tokenizer, max_l
     return evaluate_blip2(model, learnable_visual_prompts, val_prompts, tokenizer, max_len, logger)
 
 
+@torch.no_grad()
+def evaluate_llava(model, learnable_visual_prompts, val_prompts, tokenizer, max_len=100, logger=None):
+    generated_lengths = []
+    for i in val_prompts:
+        if logger is not None:
+            logger.debug(f'Evaluating on prompt:{i}')
+        input_ids = construct_input_ids_llava(i, tokenizer).to(model.device)
+        output = model.generate(pixel_values=learnable_visual_prompts.embeddings, input_ids=input_ids, max_new_tokens=max_len)
+        input_text = tokenizer.decode(input_ids.flatten(), skip_special_tokens=True).replace('<image>', '')
+        generated_text = tokenizer.decode(output[0], skip_special_tokens=True).replace(input_text, '', 1)
+        if logger is not None:
+            logger.debug(f'Corresponding result:{generated_text}')
+        generated_lengths.append(len(generated_text.split()))
+        logger.debug(f'Length: {len(generated_text.split())}')
+    average_length = sum(generated_lengths) / len(generated_lengths)
+    return average_length
+
+
 def decorate_tokenizer(tokenizer: transformers.PreTrainedTokenizerFast) -> None:
     if env.get('lp_token') not in tokenizer.added_tokens_encoder.keys():
         tokenizer.add_tokens(env.get('lp_token'), special_tokens=True)
@@ -265,6 +311,14 @@ def construct_input_ids_blip(
     text_prompt: str, 
     tokenizer,
 ) -> torch.Tensor:
+    encoded_ids = tokenizer.encode(text_prompt, return_tensors="pt")
+    return encoded_ids
+
+def construct_input_ids_llava(
+    text_prompt: str, 
+    tokenizer,
+) -> torch.Tensor:
+    text_prompt = f"USER: <image>\n{text_prompt}\nASSISTANT:"
     encoded_ids = tokenizer.encode(text_prompt, return_tensors="pt")
     return encoded_ids
 

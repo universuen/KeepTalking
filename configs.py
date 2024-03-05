@@ -50,6 +50,14 @@ class BlipFullTrainingConfig:
 
 
 @dataclass
+class LlavaFullTrainingConfig:
+    epochs: int = 1
+    lr: float = 1e-2
+    max_len: int = 100
+    batch_size: int = 10
+
+
+@dataclass
 class PathConfig:
     project: Path = Path(__file__).absolute().parent
     src: Path = project / 'src'
