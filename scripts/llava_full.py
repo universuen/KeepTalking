@@ -59,7 +59,6 @@ for e in range(1, training_config.epochs + 1):
             )
             sub_loss = torch.mean(torch.softmax(logits, dim=1)[:, eos_token_id]) / training_config.batch_size
             sub_loss.backward()
-            logger.error(sub_loss.item())
             loss += sub_loss.item()
         optimizer.step()
         learnable_prompts.normalize()
