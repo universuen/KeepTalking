@@ -51,9 +51,26 @@ class BlipFullTrainingConfig:
 
 @dataclass
 class LlavaFullTrainingConfig:
-    epochs: int = 3
+    epochs: int = 1
     lr: float = 1e-2
     max_len: int = 100
+    batch_size: int = 10
+
+
+@dataclass
+class LlavaPartialTrainingConfig:
+    epochs: int = 1
+    lr: float = 1e-2
+    max_len: int = 300
+    batch_size: int = 10
+
+
+@dataclass
+class Baichuan2FullTrainingConfig:
+    epochs: int = 1
+    lr: float = 1e-3
+    num_prompts: int = 50
+    max_len: int = 50
     batch_size: int = 10
 
 

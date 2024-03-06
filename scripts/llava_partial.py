@@ -9,12 +9,12 @@ import torch
 from transformers import AutoProcessor, LlavaForConditionalGeneration
 
 
-training_config = configs.LlavaFullTrainingConfig()
+training_config = configs.LlavaPartialTrainingConfig()
 logger_config = configs.LoggerConfig(level='DEBUG')
 path_config = configs.PathConfig()
 other_config = configs.OtherConfig(device='auto')
 
-logger = Logger('llava_full', logger_config.level, logger_config.path)
+logger = Logger('llava_partial', logger_config.level, logger_config.path)
 logger.info(training_config)
 logger.info(logger_config)
 logger.info(path_config)
@@ -49,9 +49,10 @@ for e in range(1, training_config.epochs + 1):
         for text_prompt in prompts[i:i + training_config.batch_size]:
             logger.info(f'[Epoch {e}] Tuning on prompt: {text_prompt}')
             input_ids = utils.construct_input_ids_llava(text_prompt, tokenizer).to(model.device)
-            logits = utils.generate_logits_seq_llava(
+            logits = utils.generate_last_logits_llava(
                 model=model,
                 image=learnable_prompts.embeddings,
+                eos_token_id=eos_token_id,
                 input_ids=input_ids,
                 max_len=training_config.max_len,
                 tokenizer=tokenizer,
@@ -59,7 +60,6 @@ for e in range(1, training_config.epochs + 1):
             )
             sub_loss = torch.mean(torch.softmax(logits, dim=1)[:, eos_token_id]) / training_config.batch_size
             sub_loss.backward()
-            logger.error(sub_loss.item())
             loss += sub_loss.item()
         optimizer.step()
         learnable_prompts.normalize()
@@ -80,7 +80,7 @@ for e in range(1, training_config.epochs + 1):
 
     logger.info(f"Epoch {e} completed with loss: {epoch_loss / len(prompts)}")
 
-img_saving_path = path_config.data / 'llava_full.png'
+img_saving_path = path_config.data / 'llava_partial.png'
 pil_img = learnable_prompts.to_image()
 pil_img.save(img_saving_path)
 logger.info(f'Learned image is saved at {img_saving_path}')

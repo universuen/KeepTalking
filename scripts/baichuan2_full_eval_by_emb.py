@@ -1,40 +1,44 @@
 import context
 
-from src.learnable_visual_prompts import LearnableVisualPrompts
+from src.learnable_prompts import LearnablePrompts
 from src.logger import Logger
+from src.env import Env
 from src import utils
 import configs
 
 import torch
-from transformers import AutoProcessor, LlavaForConditionalGeneration
+from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers.generation.utils import GenerationConfig
 
 
-training_config = configs.LlavaFullTrainingConfig()
+training_config = configs.Baichuan2FullTrainingConfig()
 logger_config = configs.LoggerConfig(level='DEBUG')
 path_config = configs.PathConfig()
-other_config = configs.OtherConfig(device='auto')
+other_config = configs.OtherConfig(device='cuda:2')
 
-logger = Logger('llava_full', logger_config.level, logger_config.path)
+logger = Logger('baichuan2_eval_by_emb', logger_config.level, logger_config.path)
 logger.info(training_config)
 logger.info(logger_config)
 logger.info(path_config)
 logger.info(other_config)
 
-processor = AutoProcessor.from_pretrained("llava-hf/llava-1.5-7b-hf")
-model = LlavaForConditionalGeneration.from_pretrained("llava-hf/llava-1.5-7b-hf", device_map=other_config.device, low_cpu_mem_usage=True)
-tokenizer = processor.tokenizer
-eos_token_id = model.generation_config.eos_token_id
+env = Env()
+env.set('lp_token', other_config.gemma_2b_lp_token)
 
+tokenizer = AutoTokenizer.from_pretrained("baichuan-inc/Baichuan2-7B-Chat", trust_remote_code=True)
+model = AutoModelForCausalLM.from_pretrained("baichuan-inc/Baichuan2-7B-Chat", device_map=other_config.device, trust_remote_code=True)
+model.generation_config = GenerationConfig.from_pretrained("baichuan-inc/Baichuan2-7B-Chat")
+eos_token_id = model.generation_config.eos_token_id
 model_embedding_layer: torch.nn.Embedding = model.get_input_embeddings()
-learnable_prompts = LearnableVisualPrompts(
-    num_channels=3,
-    height=processor.image_processor.crop_size['height'],
-    width=processor.image_processor.crop_size['width'],
-).to(model.device)
+learnable_prompts = LearnablePrompts(
+    num_prompts=training_config.num_prompts,
+    num_dims=model_embedding_layer.embedding_dim,
+).to(other_config.device)
 
 prompts = utils.read_prompts(path_config.data / 'training_prompts.txt')
 val_prompts = utils.read_prompts(path_config.data / 'validation_prompts.txt')
 logger.info(f'Loaded {len(prompts)} training prompts and {len(val_prompts)} validation prompts')
+
 
 optimizer = torch.optim.Adam([learnable_prompts.embeddings], lr=training_config.lr)
 logger.info(f'Using Adam')
@@ -48,30 +52,32 @@ for e in range(1, training_config.epochs + 1):
         optimizer.zero_grad()
         for text_prompt in prompts[i:i + training_config.batch_size]:
             logger.info(f'[Epoch {e}] Tuning on prompt: {text_prompt}')
-            input_ids = utils.construct_input_ids_llava(text_prompt, tokenizer).to(model.device)
-            logits = utils.generate_logits_seq_llava(
+            input_embeddings = utils.construct_input_embeddings_baichuan2(
                 model=model,
-                image=learnable_prompts.embeddings,
-                input_ids=input_ids,
-                max_len=training_config.max_len,
+                text_prompt=text_prompt,
                 tokenizer=tokenizer,
-                logger=logger,
+                embedding_layer=model_embedding_layer,
+                lp_embeddings=learnable_prompts.embeddings,
+            )
+            logits = utils.generate_logits_seq(
+                model=model,
+                input_embeddings=input_embeddings,
+                max_len=training_config.max_len, 
+                tokenizer=tokenizer, logger=logger,
             )
             sub_loss = torch.mean(torch.softmax(logits, dim=1)[:, eos_token_id]) / training_config.batch_size
             sub_loss.backward()
-            logger.error(sub_loss.item())
             loss += sub_loss.item()
         optimizer.step()
-        learnable_prompts.normalize()
         step_cnt += 1
         epoch_loss += loss
         logger.debug(f'Loss: {loss}')
         if step_cnt % 1 == 0:
             logger.info('Evaluating')
             torch.cuda.empty_cache()
-            avg_len = utils.evaluate_llava(
+            avg_len = utils.evaluate_by_embeddings(
                 model = model,
-                learnable_visual_prompts=learnable_prompts,
+                learnable_prompts=learnable_prompts,
                 val_prompts=val_prompts,
                 tokenizer=tokenizer,
                 logger=logger,
@@ -80,7 +86,6 @@ for e in range(1, training_config.epochs + 1):
 
     logger.info(f"Epoch {e} completed with loss: {epoch_loss / len(prompts)}")
 
-img_saving_path = path_config.data / 'llava_full.png'
-pil_img = learnable_prompts.to_image()
-pil_img.save(img_saving_path)
-logger.info(f'Learned image is saved at {img_saving_path}')
+ids = learnable_prompts.to_ids(model_embedding_layer)
+lp_text = tokenizer.decode(ids)
+logger.info(f"Learned prompts: {lp_text}")

@@ -24,7 +24,7 @@ def generate_logits_seq(
     tokenizer = None,
     logger: Logger = None,
 ):
-    generate_with_grad = enable_grad(model.generate)
+    generate_with_grad = enable_grad(model.greedy_search)
     outputs = generate_with_grad(
         model, 
         inputs_embeds=input_embeddings, 
@@ -204,6 +204,44 @@ def generate_logits_seq_llava(
     return all_logits
 
 
+def generate_last_logits_llava(
+    model,
+    eos_token_id: int, 
+    image: torch.Tensor,
+    input_ids: torch.Tensor,
+    max_len: int = 100,
+    tokenizer = None,
+    logger: Logger = None,
+):
+    outputs = model.generate(
+        pixel_values=image,
+        input_ids=input_ids, 
+        max_new_tokens=max_len, 
+        return_dict_in_generate=True,
+        output_logits=True,
+    )
+    all_logits = torch.cat(outputs.logits)
+    input_ids = outputs.sequences
+    try:
+        eos_index = input_ids[0].tolist().index(eos_token_id)
+    except ValueError:
+        eos_index = -1
+    target_input_ids = input_ids[:, :eos_index]
+    last_logits = generate_logits_seq_llava(
+        model,
+        image=image,
+        input_ids=target_input_ids,
+        max_len=max_len,
+    )[-1].unsqueeze(0)
+    if tokenizer is not None:
+        generated_token_ids = all_logits.argmax(dim=-1)
+        generated_sentence = tokenizer.decode(generated_token_ids.tolist(), skip_special_tokens=True)
+        if logger is not None:
+            logger.debug(f'Corresponding result: {generated_sentence}')
+
+    return last_logits
+
+
 @torch.no_grad()
 def evaluate_by_embeddings(model, learnable_prompts, val_prompts, tokenizer, max_len=100, logger=None):
     generated_lengths = []
@@ -314,6 +352,7 @@ def construct_input_ids_blip(
     encoded_ids = tokenizer.encode(text_prompt, return_tensors="pt")
     return encoded_ids
 
+
 def construct_input_ids_llava(
     text_prompt: str, 
     tokenizer,
@@ -348,6 +387,30 @@ def construct_input_embeddings(
     return constructed_embeddings
 
 
+def construct_input_embeddings_baichuan2(
+        model,
+        text_prompt: str, 
+        tokenizer: transformers.PreTrainedTokenizerFast, 
+        embedding_layer: torch.nn.Embedding,
+        lp_embeddings: torch.Tensor,
+    ) -> torch.Tensor:
+    decorate_tokenizer(tokenizer)
+    lp_id = tokenizer.added_tokens_encoder[env.get('lp_token')]
+    prompt = f"{text_prompt} {env.get('lp_token')}"
+    encoded_ids = _build_chat_input_baichuan2(model, tokenizer, [{"role": "user", "content": prompt}], max_new_tokens=1000)
+    encoded_ids = encoded_ids[0].tolist()
+    cut_off_point = encoded_ids.index(lp_id)
+    prefix_ids = torch.tensor([encoded_ids[:cut_off_point]], dtype=torch.long, device=lp_embeddings.device)
+    suffix_ids = torch.tensor([encoded_ids[cut_off_point + 1:]], dtype=torch.long, device=lp_embeddings.device)
+    prefix_embeddings = embedding_layer(prefix_ids)
+    suffix_embeddings = embedding_layer(suffix_ids)
+    constructed_embeddings = torch.cat(
+        [prefix_embeddings, lp_embeddings.unsqueeze(0), suffix_embeddings],
+        dim=1,
+    )
+    return constructed_embeddings
+
+
 @torch.no_grad()
 def construct_input_ids(
         text_prompt: str, 
@@ -370,3 +433,48 @@ def construct_input_ids(
 
 def enable_grad(func: Callable) -> Callable:
     return func.__closure__[1].cell_contents
+
+
+def _build_chat_input_baichuan2(model, tokenizer, messages: list[dict], max_new_tokens: int=0):
+    def _parse_messages(messages, split_role="user"):
+        system, rounds = "", []
+        round = []
+        for i, message in enumerate(messages):
+            if message["role"] == "system":
+                assert i == 0
+                system = message["content"]
+                continue
+            if message["role"] == split_role and round:
+                rounds.append(round)
+                round = []
+            round.append(message)
+        if round:
+            rounds.append(round)
+        return system, rounds
+
+    max_new_tokens = max_new_tokens or model.generation_config.max_new_tokens
+    max_input_tokens = model.config.model_max_length - max_new_tokens
+    system, rounds = _parse_messages(messages, split_role="user")
+    system_tokens = tokenizer.encode(system)
+    max_history_tokens = max_input_tokens - len(system_tokens)
+
+    history_tokens = []
+    for round in rounds[::-1]:
+        round_tokens = []
+        for message in round:
+            if message["role"] == "user":
+                round_tokens.append(model.generation_config.user_token_id)
+            else:
+                round_tokens.append(model.generation_config.assistant_token_id)
+            round_tokens.extend(tokenizer.encode(message["content"]))
+        if len(history_tokens) == 0 or len(history_tokens) + len(round_tokens) <= max_history_tokens:
+            history_tokens = round_tokens + history_tokens  # concat left
+            if len(history_tokens) < max_history_tokens:
+                continue
+        break
+
+    input_tokens = system_tokens + history_tokens
+    if messages[-1]["role"] != "assistant":
+        input_tokens.append(model.generation_config.assistant_token_id)
+    input_tokens = input_tokens[-max_input_tokens:]  # truncate left
+    return torch.LongTensor([input_tokens]).to(model.device)
