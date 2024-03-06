@@ -59,9 +59,9 @@ class LlavaFullTrainingConfig:
 
 @dataclass
 class LlavaPartialTrainingConfig:
-    epochs: int = 1
+    epochs: int = 3
     lr: float = 1e-2
-    max_len: int = 300
+    max_len: int = 200
     batch_size: int = 10
 
 
@@ -69,8 +69,8 @@ class LlavaPartialTrainingConfig:
 class Baichuan2FullTrainingConfig:
     epochs: int = 1
     lr: float = 1e-3
-    num_prompts: int = 50
-    max_len: int = 50
+    num_prompts: int = 20
+    max_len: int = 100
     batch_size: int = 10
 
 

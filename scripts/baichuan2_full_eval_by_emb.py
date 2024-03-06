@@ -14,7 +14,7 @@ from transformers.generation.utils import GenerationConfig
 training_config = configs.Baichuan2FullTrainingConfig()
 logger_config = configs.LoggerConfig(level='DEBUG')
 path_config = configs.PathConfig()
-other_config = configs.OtherConfig(device='cuda:2')
+other_config = configs.OtherConfig(device='auto')
 
 logger = Logger('baichuan2_eval_by_emb', logger_config.level, logger_config.path)
 logger.info(training_config)
@@ -27,13 +27,13 @@ env.set('lp_token', other_config.gemma_2b_lp_token)
 
 tokenizer = AutoTokenizer.from_pretrained("baichuan-inc/Baichuan2-7B-Chat", trust_remote_code=True)
 model = AutoModelForCausalLM.from_pretrained("baichuan-inc/Baichuan2-7B-Chat", device_map=other_config.device, trust_remote_code=True)
-model.generation_config = GenerationConfig.from_pretrained("baichuan-inc/Baichuan2-7B-Chat")
+model.generation_config = GenerationConfig.from_pretrained("baichuan-inc/Baichuan2-7B-Chat", repetition_penalty=1.0)
 eos_token_id = model.generation_config.eos_token_id
 model_embedding_layer: torch.nn.Embedding = model.get_input_embeddings()
 learnable_prompts = LearnablePrompts(
     num_prompts=training_config.num_prompts,
     num_dims=model_embedding_layer.embedding_dim,
-).to(other_config.device)
+).to(model.device)
 
 prompts = utils.read_prompts(path_config.data / 'training_prompts.txt')
 val_prompts = utils.read_prompts(path_config.data / 'validation_prompts.txt')

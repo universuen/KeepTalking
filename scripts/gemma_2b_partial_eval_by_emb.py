@@ -35,7 +35,7 @@ model_embedding_layer: torch.nn.Embedding = model.get_input_embeddings()
 learnable_prompts = LearnablePrompts(
     num_prompts=training_config.num_prompts,
     num_dims=model_embedding_layer.embedding_dim,
-).to(other_config.device)
+).to(model.device)
 
 prompts = utils.read_prompts(path_config.data / 'training_prompts.txt')
 val_prompts = utils.read_prompts(path_config.data / 'validation_prompts.txt')

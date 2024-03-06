@@ -24,7 +24,7 @@ def generate_logits_seq(
     tokenizer = None,
     logger: Logger = None,
 ):
-    generate_with_grad = enable_grad(model.greedy_search)
+    generate_with_grad = enable_grad(model.generate)
     outputs = generate_with_grad(
         model, 
         inputs_embeds=input_embeddings, 
