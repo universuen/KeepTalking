@@ -85,7 +85,7 @@ for e in range(1, training_config.epochs + 1):
             )
             logger.info(f'Avg response length on val dataset: {avg_len}')
 
-    logger.info(f"Epoch {e} completed with loss: {epoch_loss/len(prompts)}")
+    logger.info(f"Epoch {e} completed with loss: {epoch_loss * training_config.batch_size / len(prompts)}")
 
 ids = learnable_prompts.to_ids(model_embedding_layer)
 lp_text = tokenizer.decode(ids)

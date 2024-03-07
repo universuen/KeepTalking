@@ -6,10 +6,11 @@ from KeepTalking.src.models.learnable_prompts import LearnablePrompts
 
 
 class LearnableVisualPrompts(LearnablePrompts):
-    def __init__(self, num_channels: int, height: int, width: int) -> None:
+    def __init__(self, num_channels: int, height: int, width: int, seed: int = 42) -> None:
         super().__init__(1, 1)
+        torch.manual_seed(seed)
         self.embeddings = nn.Parameter(
-            torch.zeros(1, num_channels, height, width)
+            torch.ones(1, num_channels, height, width)
         )
 
     @torch.no_grad()

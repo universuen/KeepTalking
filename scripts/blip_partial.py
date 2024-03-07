@@ -1,40 +1,35 @@
 import context
 
-from src.models.learnable_prompts import LearnablePrompts
+from src.models.learnable_visual_prompts import LearnableVisualPrompts
 from src.logger import Logger
-from src.env import Env
 from src import utils
 import configs
 
 import torch
-import transformers
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import BlipProcessor, BlipForQuestionAnswering
 
 
-training_config = configs.Gemma2bPartialTrainingConfig()
+training_config = configs.BlipPartialTrainingConfig()
 logger_config = configs.LoggerConfig(level='DEBUG')
 path_config = configs.PathConfig()
-other_config = configs.OtherConfig(device='cuda:3')
+other_config = configs.OtherConfig(device='cuda:1')
 
-logger = Logger('gemma_2b_partial_eval_by_emb', logger_config.level, logger_config.path)
+logger = Logger('blip_partial', logger_config.level, logger_config.path)
 logger.info(training_config)
 logger.info(logger_config)
 logger.info(path_config)
 logger.info(other_config)
 
-env = Env()
-env.set('lp_token', other_config.gemma_2b_lp_token)
+processor = BlipProcessor.from_pretrained("Salesforce/blip-vqa-capfilt-large")
+model = BlipForQuestionAnswering.from_pretrained("Salesforce/blip-vqa-capfilt-large", device_map=other_config.device)
+tokenizer = processor.tokenizer
+eos_token_id = model.config.text_config.sep_token_id
 
-tokenizer: transformers.GemmaTokenizerFast = AutoTokenizer.from_pretrained('google/gemma-2b-it')
-model: transformers.GemmaForCausalLM = AutoModelForCausalLM.from_pretrained(
-        'google/gemma-2b-it', 
-        device_map=other_config.device,
-    )
-eos_token_id = model.generation_config.eos_token_id
 model_embedding_layer: torch.nn.Embedding = model.get_input_embeddings()
-learnable_prompts = LearnablePrompts(
-    num_prompts=training_config.num_prompts,
-    num_dims=model_embedding_layer.embedding_dim,
+learnable_prompts = LearnableVisualPrompts(
+    num_channels=3,
+    height=processor.image_processor.size['height'],
+    width=processor.image_processor.size['width'],
 ).to(model.device)
 
 prompts = utils.read_prompts(path_config.data / 'training_prompts.txt')
@@ -54,31 +49,30 @@ for e in range(1, training_config.epochs + 1):
         optimizer.zero_grad()
         for text_prompt in prompts[i:i + training_config.batch_size]:
             logger.info(f'[Epoch {e}] Tuning on prompt: {text_prompt}')
-            input_embeddings = utils.construct_input_embeddings(
-                text_prompt=text_prompt,
+            input_ids = utils.construct_input_ids_blip(text_prompt, tokenizer).to(model.device)
+            logits = utils.generate_last_logits_blip(
+                model=model,
+                eos_token_id=eos_token_id,
+                image=learnable_prompts.embeddings,
+                input_ids=input_ids,
+                max_len=training_config.max_len,
                 tokenizer=tokenizer,
-                embedding_layer=model_embedding_layer,
-                lp_embeddings=learnable_prompts.embeddings,
+                logger=logger,
             )
-            logits = utils.get_last_logits(
-                    model=model, eos_token_id=eos_token_id, 
-                    input_embeddings=input_embeddings,
-                    max_len=training_config.max_len, 
-                    tokenizer=tokenizer, logger=logger,
-                )
             sub_loss = torch.softmax(logits, dim=1)[:, eos_token_id] / training_config.batch_size
             sub_loss.backward()
             loss += sub_loss.item()
         optimizer.step()
+        learnable_prompts.normalize()
         step_cnt += 1
         epoch_loss += loss
         logger.debug(f'Loss: {loss}')
         if step_cnt % 1 == 0:
             logger.info('Evaluating')
             torch.cuda.empty_cache()
-            avg_len = utils.evaluate_by_embeddings(
+            avg_len = utils.evaluate_blip(
                 model = model,
-                learnable_prompts=learnable_prompts,
+                learnable_visual_prompts=learnable_prompts,
                 val_prompts=val_prompts,
                 tokenizer=tokenizer,
                 logger=logger,
@@ -86,11 +80,12 @@ for e in range(1, training_config.epochs + 1):
             logger.info(f'Avg response length on val dataset: {avg_len}')
 
     logger.info(f"Epoch {e} completed with loss: {epoch_loss * training_config.batch_size / len(prompts)}")
-    
-ids = learnable_prompts.to_ids(model_embedding_layer)
-lp_text = tokenizer.decode(ids)
-logger.info(f"Learned prompts: {lp_text}")
 
-embeddings_saving_path = path_config.models / 'gemma2b_partial_eval_by_emb.pt'
+img_saving_path = path_config.data / 'blip_partial.png'
+pil_img = learnable_prompts.to_image()
+pil_img.save(img_saving_path)
+logger.info(f'Learned image is saved at {img_saving_path}')
+
+embeddings_saving_path = path_config.models / 'blip_partial.pt'
 learnable_prompts.save(embeddings_saving_path)
 logger.info(f'Learned embeddings are saved at {embeddings_saving_path}')

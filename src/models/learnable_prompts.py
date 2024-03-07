@@ -5,10 +5,11 @@ from torch import nn
 
 
 class LearnablePrompts(nn.Module):
-    def __init__(self, num_prompts: int, num_dims: int) -> None:
+    def __init__(self, num_prompts: int, num_dims: int, seed: int = 42) -> None:
         super().__init__()
+        torch.manual_seed(seed)
         self.embeddings = nn.Parameter(
-            torch.zeros(num_prompts, num_dims)
+            torch.randn(num_prompts, num_dims)
         )
 
     def to_ids(self, embedding_layer: torch.nn.Embedding, chunk_size: int = 10) -> torch.Tensor:

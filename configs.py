@@ -45,8 +45,16 @@ class Blip2PartialTrainingConfig:
 class BlipFullTrainingConfig:
     epochs: int = 1
     lr: float = 1e-2
-    max_len: int = 20
-    batch_size: int = 10
+    max_len: int = 100
+    batch_size: int = 1
+
+
+@dataclass
+class BlipPartialTrainingConfig:
+    epochs: int = 1
+    lr: float = 1e-2
+    max_len: int = 100
+    batch_size: int = 1
 
 
 @dataclass
@@ -59,7 +67,7 @@ class LlavaFullTrainingConfig:
 
 @dataclass
 class LlavaPartialTrainingConfig:
-    epochs: int = 3
+    epochs: int = 1
     lr: float = 1e-2
     max_len: int = 200
     batch_size: int = 10

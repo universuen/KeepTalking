@@ -12,7 +12,7 @@ from transformers import BlipProcessor, BlipForQuestionAnswering
 training_config = configs.BlipFullTrainingConfig()
 logger_config = configs.LoggerConfig(level='DEBUG')
 path_config = configs.PathConfig()
-other_config = configs.OtherConfig(device='cuda:1')
+other_config = configs.OtherConfig(device='cuda:0')
 
 logger = Logger('blip_full', logger_config.level, logger_config.path)
 logger.info(training_config)
@@ -78,7 +78,7 @@ for e in range(1, training_config.epochs + 1):
             )
             logger.info(f'Avg response length on val dataset: {avg_len}')
 
-    logger.info(f"Epoch {e} completed with loss: {epoch_loss / len(prompts)}")
+    logger.info(f"Epoch {e} completed with loss: {epoch_loss * training_config.batch_size / len(prompts)}")
 
 img_saving_path = path_config.data / 'blip_full.png'
 pil_img = learnable_prompts.to_image()
