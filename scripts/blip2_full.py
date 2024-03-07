@@ -1,6 +1,6 @@
 import context
 
-from src.learnable_visual_prompts import LearnableVisualPrompts
+from src.models.learnable_visual_prompts import LearnableVisualPrompts
 from src.logger import Logger
 from src import utils
 import configs
@@ -84,3 +84,7 @@ img_saving_path = path_config.data / 'blip2_full.png'
 pil_img = learnable_prompts.to_image()
 pil_img.save(img_saving_path)
 logger.info(f'Learned image is saved at {img_saving_path}')
+
+embeddings_saving_path = path_config.models / 'blip2_full.pt'
+learnable_prompts.save(embeddings_saving_path)
+logger.info(f'Learned embeddings are saved at {embeddings_saving_path}')

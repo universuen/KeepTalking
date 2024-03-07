@@ -2,12 +2,14 @@ import torch
 from torch import nn
 import torchvision.transforms as transforms
 
+from KeepTalking.src.models.learnable_prompts import LearnablePrompts
 
-class LearnableVisualPrompts(nn.Module):
+
+class LearnableVisualPrompts(LearnablePrompts):
     def __init__(self, num_channels: int, height: int, width: int) -> None:
-        super().__init__()
+        super().__init__(1, 1)
         self.embeddings = nn.Parameter(
-            torch.randn(1, num_channels, height, width)
+            torch.zeros(1, num_channels, height, width)
         )
 
     @torch.no_grad()
@@ -20,4 +22,6 @@ class LearnableVisualPrompts(nn.Module):
         pil_image = to_pil(self.embeddings.squeeze(0).cpu().detach())
 
         return pil_image
-
+    
+    def to_ids(self) -> None:
+        raise NotImplementedError

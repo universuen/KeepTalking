@@ -1,6 +1,6 @@
 import context
 
-from src.learnable_prompts import LearnablePrompts
+from src.models.learnable_prompts import LearnablePrompts
 from src.logger import Logger
 from src.env import Env
 from src import utils
@@ -16,7 +16,7 @@ logger_config = configs.LoggerConfig(level='DEBUG')
 path_config = configs.PathConfig()
 other_config = configs.OtherConfig(device='auto')
 
-logger = Logger('baichuan2_eval_by_emb', logger_config.level, logger_config.path)
+logger = Logger('baichuan2_full_eval_by_emb', logger_config.level, logger_config.path)
 logger.info(training_config)
 logger.info(logger_config)
 logger.info(path_config)
@@ -89,3 +89,7 @@ for e in range(1, training_config.epochs + 1):
 ids = learnable_prompts.to_ids(model_embedding_layer)
 lp_text = tokenizer.decode(ids)
 logger.info(f"Learned prompts: {lp_text}")
+
+embeddings_saving_path = path_config.models / 'baichuan2_full_eval_by_emb.pt'
+learnable_prompts.save(embeddings_saving_path)
+logger.info(f'Learned embeddings are saved at {embeddings_saving_path}')

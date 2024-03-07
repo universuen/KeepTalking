@@ -75,6 +75,15 @@ class Baichuan2FullTrainingConfig:
 
 
 @dataclass
+class Baichuan2PartialTrainingConfig:
+    epochs: int = 1
+    lr: float = 1e-3
+    num_prompts: int = 20
+    max_len: int = 200
+    batch_size: int = 10
+
+
+@dataclass
 class PathConfig:
     project: Path = Path(__file__).absolute().parent
     src: Path = project / 'src'
@@ -82,6 +91,7 @@ class PathConfig:
     scripts: Path = project / 'scripts'
     tests: Path = project / 'tests'
     logs: Path = data / 'logs'
+    models: Path = data / 'models'
 
     def __post_init__(self) -> None:
         for path in vars(self).values():

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import torch
 from torch import nn
 
@@ -6,7 +8,7 @@ class LearnablePrompts(nn.Module):
     def __init__(self, num_prompts: int, num_dims: int) -> None:
         super().__init__()
         self.embeddings = nn.Parameter(
-            torch.randn(num_prompts, num_dims)
+            torch.zeros(num_prompts, num_dims)
         )
 
     def to_ids(self, embedding_layer: torch.nn.Embedding, chunk_size: int = 10) -> torch.Tensor:
@@ -18,4 +20,10 @@ class LearnablePrompts(nn.Module):
             all_ids.append(ids)
         all_ids = torch.cat(all_ids, dim=0)
         return all_ids
+
+    def save(self, file_path: Path) -> None:
+        torch.save(self.embeddings.data, file_path)
+
+    def load(self, file_path: str) -> None:
+        self.embeddings.data = torch.load(file_path)
 

@@ -1,6 +1,6 @@
 import context
 
-from src.learnable_prompts import LearnablePrompts
+from src.models.learnable_prompts import LearnablePrompts
 from src.logger import Logger
 from src.env import Env
 from src import utils
@@ -90,3 +90,7 @@ for e in range(1, training_config.epochs + 1):
 ids = learnable_prompts.to_ids(model_embedding_layer)
 lp_text = tokenizer.decode(ids)
 logger.info(f"Learned prompts: {lp_text}")
+
+embeddings_saving_path = path_config.models / 'gemma2b_full.pt'
+learnable_prompts.save(embeddings_saving_path)
+logger.info(f'Learned embeddings are saved at {embeddings_saving_path}')
