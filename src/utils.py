@@ -320,7 +320,7 @@ def evaluate(model, learnable_prompts, val_prompts, tokenizer, max_len=100, logg
             lp_ids=lp_ids
         )
         output = model.generate(input_ids, max_new_tokens=max_len)
-        generated_text = tokenizer.decode(output[0]).replace(tokenizer.decode(input_ids.flatten()), '', 1)
+        generated_text = tokenizer.decode(output[0], skip_special_tokens=True).replace(tokenizer.decode(input_ids.flatten()), '', 1)
         if logger is not None:
             logger.debug(f'Corresponding result:{generated_text}')
         generated_lengths.append(len(generated_text.split()))
