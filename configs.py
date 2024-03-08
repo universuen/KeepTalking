@@ -69,7 +69,7 @@ class LlavaFullTrainingConfig:
 class LlavaPartialTrainingConfig:
     epochs: int = 1
     lr: float = 1e-2
-    max_len: int = 200
+    max_len: int = 100
     batch_size: int = 10
 
 
